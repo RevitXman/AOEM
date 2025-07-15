@@ -47,12 +47,34 @@ def cleanup_old_data():
         save_data(cleaned_requests)
         print("Cleaned up old buff requests.")
 
-
 # --- Bot Setup ---
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
+
+# --- Helper Function ---
+async def create_buffs_embed(guild: discord.Guild):
+    """Creates and returns an embed of the current buff list, or None if no requests exist."""
+    cleanup_old_data()
+    requests = load_data()
+    if not requests:
+        return None
+
+    embed = discord.Embed(title="Current Buff Requests", color=discord.Color.blue())
+    sorted_requests = sorted(requests.values(), key=lambda x: x['time_slot'])
+
+    for req in sorted_requests:
+        user = guild.get_member(req['user_id'])
+        user_mention = user.mention if user else f"User ID: {req['user_id']}"
+        start_time_obj = datetime.fromisoformat(req['time_slot'])
+        end_time_obj = start_time_obj + timedelta(hours=1)
+        time_range_str = f"{start_time_obj.strftime('%Y-%m-%d %H:%M')} - {end_time_obj.strftime('%H:%M')} UTC"
+        field_name = f"Title: {req['title']} | Region: {req['region']}"
+        field_value = f"User: {user_mention} ({req['user_name']})\nTime Slot: {time_range_str}"
+        embed.add_field(name=field_name, value=field_value, inline=False)
+    
+    return embed
 
 # --- UI Components ---
 
@@ -73,7 +95,6 @@ class AoEMNameModal(Modal, title='Enter Your In-Game Name'):
         self.parent_view = view
 
     async def on_submit(self, interaction: discord.Interaction):
-        # When the modal is submitted, finalize the request with the provided name
         await self.parent_view.finalize_request(interaction, self.name_input.value)
 
 class UseDiscordNameButton(Button):
@@ -90,7 +111,6 @@ class EnterCustomNameButton(Button):
         super().__init__(label="Enter In-Game Name", style=discord.ButtonStyle.secondary, row=0)
 
     async def callback(self, interaction: discord.Interaction):
-        # Send the modal to the user
         await interaction.response.send_modal(AoEMNameModal(view=self.view))
 
 class BuffRequestView(View):
@@ -109,26 +129,22 @@ class BuffRequestView(View):
 
     async def finalize_request(self, interaction: discord.Interaction, requester_name: str):
         """Saves the data and sends all confirmations. This is the final step."""
-        # Acknowledge the interaction from the modal or button press and disable the view
         await interaction.response.defer()
         for item in self.children:
             item.disabled = True
         await self.interaction.edit_original_response(content="Request submitted! The confirmation has been sent to the channel.", view=self)
 
-        # Sanitize the input name to prevent markdown injection
         sanitized_name = discord.utils.escape_markdown(requester_name)
-
         requests = load_data()
         request_time_utc = datetime.utcnow()
         start_time_obj = datetime.fromisoformat(self.time_slot)
         end_time_obj = start_time_obj + timedelta(hours=1)
         time_range_str = f"{start_time_obj.strftime('%H:%M')} - {end_time_obj.strftime('%H:%M')} UTC"
 
-        # Save the request
         request_id = str(request_time_utc.timestamp())
         requests[request_id] = {
             "user_id": self.interaction.user.id,
-            "user_name": sanitized_name, # Use the sanitized name
+            "user_name": sanitized_name,
             "title": self.buff_title,
             "time_slot": self.time_slot,
             "region": self.region,
@@ -136,7 +152,6 @@ class BuffRequestView(View):
         }
         save_data(requests)
 
-        # Send confirmation and ping
         embed = discord.Embed(
             title="New Capital Buff Request!",
             description=f"{self.interaction.user.mention} (**{sanitized_name}**) has requested the **{self.buff_title}** buff for **{time_range_str}** in the **{self.region}** region.",
@@ -144,8 +159,12 @@ class BuffRequestView(View):
         )
         ping_role = self.interaction.guild.get_role(PING_ROLE_ID)
         ping_content = ping_role.mention if ping_role else f"@role({PING_ROLE_ID})"
-
         await self.interaction.channel.send(content=ping_content, embed=embed)
+
+        # Automatically post the updated buff list to the channel
+        updated_list_embed = await create_buffs_embed(self.interaction.guild)
+        if updated_list_embed:
+            await self.interaction.channel.send(embed=updated_list_embed)
 
 class TitleSelect(Select):
     def __init__(self):
@@ -202,7 +221,7 @@ class RegionSelect(Select):
             discord.SelectOption(label="North Kingsland", value="North Kingsland"),
             discord.SelectOption(label="West Kingsland", value="West Kingsland"),
             discord.SelectOption(label="NA", value="NA"),
-            discord.SelectOption(label="Imperial City", value="Imperial City") # Added new option
+            discord.SelectOption(label="Imperial City", value="Imperial City")
         ]
         super().__init__(placeholder="Select a region...", min_values=1, max_values=1, options=options)
 
@@ -221,27 +240,12 @@ async def requestbuff(interaction: discord.Interaction):
 
 @tree.command(name="viewbuffs", description="View all active buff requests.")
 async def viewbuffs(interaction: discord.Interaction):
-    cleanup_old_data()
-    requests = load_data()
-    if not requests:
+    """Displays the list of current buff requests."""
+    buff_list_embed = await create_buffs_embed(interaction.guild)
+    if buff_list_embed:
+        await interaction.response.send_message(embed=buff_list_embed)
+    else:
         await interaction.response.send_message("There are no active buff requests.", ephemeral=True)
-        return
-
-    embed = discord.Embed(title="Current Buff Requests", color=discord.Color.blue())
-    sorted_requests = sorted(requests.values(), key=lambda x: x['time_slot'])
-
-    for req in sorted_requests:
-        user = interaction.guild.get_member(req['user_id'])
-        user_mention = user.mention if user else f"User ID: {req['user_id']}"
-        start_time_obj = datetime.fromisoformat(req['time_slot'])
-        end_time_obj = start_time_obj + timedelta(hours=1)
-        time_range_str = f"{start_time_obj.strftime('%Y-%m-%d %H:%M')} - {end_time_obj.strftime('%H:%M')} UTC"
-        field_name = f"Title: {req['title']} | Region: {req['region']}"
-        # Display both the Discord user and the name they entered for the request
-        field_value = f"User: {user_mention} ({req['user_name']})\nTime Slot: {time_range_str}"
-        embed.add_field(name=field_name, value=field_value, inline=False)
-
-    await interaction.response.send_message(embed=embed)
 
 # --- Admin Command: Clear Buffs ---
 @tree.command(name="clearbuffs", description="[Admin] Manually clears all buff requests.")
