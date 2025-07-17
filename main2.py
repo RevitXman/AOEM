@@ -6,16 +6,14 @@ import os
 from datetime import datetime, timedelta
 
 # --- Configuration ---
-# Make sure to create a 'config.json' file with your bot token and the role to ping.
+# Make sure to create a 'config.json' file with your bot token.
 # {
-#   "token": "YOUR_DISCORD_BOT_TOKEN",
-#   "ping_role_id": "YOUR_DISCORD_ROLE_ID"
+#   "token": "YOUR_DISCORD_BOT_TOKEN"
 # }
 with open('config.json', 'r') as f:
     config = json.load(f)
 
 DISCORD_TOKEN = config['token']
-PING_ROLE_ID = int(config['ping_role_id'])
 
 # --- Data Management ---
 DATA_FILE = "buff_requests.json"
@@ -49,8 +47,7 @@ def cleanup_old_data():
 
 # --- Bot Setup ---
 intents = discord.Intents.default()
-# Required to fetch members for mentions and names
-intents.members = True 
+intents.message_content = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
@@ -80,8 +77,16 @@ async def create_buffs_embed(guild: discord.Guild):
 # --- UI Components ---
 
 class AoEMNameModal(Modal, title='Enter Your In-Game Name'):
+    """A modal for the user to enter their custom in-game name."""
     parent_view: 'BuffRequestView'
-    name_input = TextInput(label='AoEM Name', placeholder='Enter your in-game name here...', style=discord.TextStyle.short, required=True, max_length=50)
+
+    name_input = TextInput(
+        label='AoEM Name',
+        placeholder='Enter your in-game name here...',
+        style=discord.TextStyle.short,
+        required=True,
+        max_length=50,
+    )
 
     def __init__(self, view: 'BuffRequestView'):
         super().__init__(timeout=300)
@@ -91,6 +96,7 @@ class AoEMNameModal(Modal, title='Enter Your In-Game Name'):
         await self.parent_view.finalize_request(interaction, self.name_input.value)
 
 class UseDiscordNameButton(Button):
+    """A button to confirm the request using the user's Discord display name."""
     def __init__(self):
         super().__init__(label="Use Discord Name", style=discord.ButtonStyle.primary, row=0)
 
@@ -98,6 +104,7 @@ class UseDiscordNameButton(Button):
         await self.view.finalize_request(interaction, interaction.user.display_name)
 
 class EnterCustomNameButton(Button):
+    """A button that opens the modal to enter a custom in-game name."""
     def __init__(self):
         super().__init__(label="Enter In-Game Name", style=discord.ButtonStyle.secondary, row=0)
 
@@ -119,19 +126,16 @@ class BuffRequestView(View):
         await self.interaction.edit_original_response(view=self)
 
     async def finalize_request(self, interaction: discord.Interaction, requester_name: str):
-        """Saves data, sends confirmation with ping, then sends the updated list."""
+        """Saves the data and sends all confirmations. This is the final step."""
         await interaction.response.defer()
         for item in self.children:
             item.disabled = True
-        await self.interaction.edit_original_response(content="Request submitted! The confirmation has been sent to the channel.", view=self)
+        await self.interaction.edit_original_response(content="Request submitted! The buff list has been updated.", view=self)
 
         sanitized_name = discord.utils.escape_markdown(requester_name)
         requests = load_data()
         request_time_utc = datetime.utcnow()
-        start_time_obj = datetime.fromisoformat(self.time_slot)
-        end_time_obj = start_time_obj + timedelta(hours=1)
-        time_range_str = f"{start_time_obj.strftime('%H:%M')} - {end_time_obj.strftime('%H:%M')} UTC"
-
+        
         request_id = str(request_time_utc.timestamp())
         requests[request_id] = {
             "user_id": self.interaction.user.id,
@@ -143,20 +147,14 @@ class BuffRequestView(View):
         }
         save_data(requests)
 
-        # Send confirmation and ping
-        embed = discord.Embed(
-            title="New Capital Buff Request!",
-            description=f"{self.interaction.user.mention} (**{sanitized_name}**) has requested the **{self.buff_title}** buff for **{time_range_str}** in the **{self.region}** region.",
-            color=discord.Color.green()
-        )
-        ping_role = self.interaction.guild.get_role(PING_ROLE_ID)
-        ping_content = ping_role.mention if ping_role else f"@role({PING_ROLE_ID})"
-        await self.interaction.channel.send(content=ping_content, embed=embed)
-
-        # Automatically post the updated buff list to the channel
+        # Post the updated buff list to the channel
         updated_list_embed = await create_buffs_embed(self.interaction.guild)
         if updated_list_embed:
             await self.interaction.channel.send(embed=updated_list_embed)
+        
+        # Send the ping message as plain text
+        await self.interaction.channel.send("@Title Teller")
+
 
 class TitleSelect(Select):
     def __init__(self):
@@ -232,6 +230,7 @@ async def requestbuff(interaction: discord.Interaction):
 
 @tree.command(name="viewbuffs", description="View all active buff requests.")
 async def viewbuffs(interaction: discord.Interaction):
+    """Displays the list of current buff requests."""
     buff_list_embed = await create_buffs_embed(interaction.guild)
     if buff_list_embed:
         await interaction.response.send_message(embed=buff_list_embed)
