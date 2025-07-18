@@ -105,7 +105,7 @@ Your command prompt should now be prefixed with (venv).
 Install Dependencies:
 The bot requires the discord.py library.
 
-pip install discord.py
+pip install 
 
 Step 4: Run the Bot Manually (for Testing)
 You can run the bot directly from your terminal to make sure everything is working.
