@@ -1,167 +1,133 @@
-Discord Buff Request Bot
+# Discord Buff Request Bot
+
 This bot allows users on a Discord server to request time-slotted capital buffs. It manages requests to prevent double-booking, automatically clears old requests, and notifies a specific role when a new request is made.
 
-Features
-/requestbuff: A slash command that guides users through a series of dropdowns to select a buff type, time slot, and region.
+## Features
 
-Name Input: Users can choose to use their Discord name or enter a custom in-game name for the request.
+* **/requestbuff**: A slash command that guides users through a series of dropdowns to select a date (today or tomorrow), buff type, time slot, and region.
+* **5-Minute Reminders**: Automatically pings the designated role 5 minutes before a buff is scheduled to start, mentioning who originally requested it.
+* **Scheduled List**: Posts the full list of active buffs to a specific channel every 3 hours.
+* **Name Input**: Users can choose to use their Discord name or enter a custom in-game name for the request.
+* **Conflict Detection**: Prevents users from booking a time slot for a buff that is already taken.
+* **/viewbuffs**: Displays a list of all current and upcoming buff requests with the requester's name in bold.
+* **/clearbuffs**: An admin-only command to manually wipe all current requests.
+* **Automatic Data Cleanup**: Automatically removes requests that are more than 49 hours old.
+* **Logging**: All new requests and important events are logged to a `bot.log` file, which rotates automatically on a weekly basis.
 
-Conflict Detection: Prevents users from booking a time slot for a buff that is already taken.
+---
 
-/viewbuffs: Displays a list of all current and upcoming buff requests.
+## Setup Instructions for Ubuntu
 
-/clearbuffs: An admin-only command to manually wipe all current requests.
-
-Automatic Data Cleanup: Automatically removes requests that are more than 24 hours old.
-
-Setup Instructions for Ubuntu
 Follow these steps to get the bot running on your Ubuntu server.
 
-Prerequisites
-An Ubuntu server (20.04 or newer is recommended).
+### Prerequisites
 
-Python 3.8 or newer.
+* An Ubuntu server (20.04 or newer is recommended).
+* Python 3.8 or newer.
 
-git for cloning the repository.
+### Step 1: Create the Discord Bot Application
 
-You can install these with:
+1.  **Go to the [Discord Developer Portal](https://discord.com/developers/applications)** and create a new application.
+2.  **Go to the "Bot" tab.** Click "Add Bot".
+3.  **Get the Bot Token:** Click **"Reset Token"** to reveal the bot's token. Copy this and save it.
+4.  **Enable Privileged Intents:** On the "Bot" page, enable the **SERVER MEMBERS INTENT** and **MESSAGE CONTENT INTENT**. This is crucial for the bot to find users and read commands.
 
-sudo apt update
-sudo apt install python3 python3-pip python3-venv git -y
+### Step 2: Invite the Bot and Get IDs
 
-Step 1: Create the Discord Bot Application
-Before setting up the server, you need to create the bot in Discord's Developer Portal.
+1.  **Invite the Bot:**
+    * Go to "OAuth2" -> "URL Generator".
+    * In "Scopes", check `bot` and `applications.commands`.
+    * In "Bot Permissions", check `Send Messages`, `Embed Links`, and `Read Message History`.
+    * Copy the generated URL and use it to invite the bot to your server.
+2.  **Get IDs:**
+    * Enable Developer Mode in Discord (User Settings > Advanced).
+    * Right-click the role you want to ping (e.g., "@Title Teller") and **"Copy Role ID"**.
+    * Right-click the channel where you want scheduled lists and reminders to be posted and **"Copy Channel ID"**.
 
-Go to the Discord Developer Portal and click "New Application". Give it a name and click "Create".
+### Step 3: Set Up the Bot on Your Server
 
-Create a Bot User: In the left-hand menu, go to the "Bot" tab. Click "Add Bot", then "Yes, do it!".
+1.  **Create a Directory:**
+    ```bash
+    mkdir -p ~/discord-bot
+    cd ~/discord-bot
+    ```
+2.  **Create the Python Script (`main.py`):**
+    Create the file and paste the Python code from the Canvas into it.
+3.  **Create the `config.json` File:**
+    This file stores your secrets and IDs.
+    ```bash
+    nano config.json
+    ```
+    Paste the following into the file, replacing the placeholder values.
+    ```json
+    {
+      "token": "YOUR_DISCORD_BOT_TOKEN",
+      "ping_role_id": "YOUR_DISCORD_ROLE_ID",
+      "log_channel_id": "YOUR_CHANNEL_ID_FOR_SCHEDULED_LISTS"
+    }
+    ```
+4.  **Set up Python Environment:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install discord.py
+    ```
 
-Get the Bot Token: Under the bot's username, click "Reset Token" to reveal the bot's token. Copy this token and save it somewhere safe. This is your bot's password; do not share it.
+### Step 4: Run the Bot as a Systemd Service
 
-Enable Privileged Intents: On the same "Bot" page, scroll down to "Privileged Gateway Intents" and enable the "Message Content Intent".
+1.  **Deactivate the virtual environment:** `deactivate`.
+2.  **Create the Service File:**
+    ```bash
+    sudo nano /etc/systemd/system/discord-bot.service
+    ```
+3.  **Paste the following configuration.** Replace `your_user` with your Ubuntu username.
+    ```ini
+    [Unit]
+    Description=Discord Buff Request Bot
+    After=network.target
+    
+    [Service]
+    User=your_user
+    Group=your_user
+    WorkingDirectory=/home/your_user/discord-bot
+    ExecStart=/home/your_user/discord-bot/venv/bin/python main.py
+    Restart=always
+    RestartSec=10
+    
+    [Install]
+    WantedBy=multi-user.target
+    ```
+4.  **Reload, Enable, and Start the Service:**
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable discord-bot.service
+    sudo systemctl start discord-bot.service
+    ```
+5.  **Check the Status:**
+    ```bash
+    sudo systemctl status discord-bot.service
+    ```
+    If it says "active (running)", your bot is live. A `bot.log` file will be created in the directory to log all requests.
 
-Invite the Bot to Your Server:
+---
 
-In the left-hand menu, go to "OAuth2" -> "URL Generator".
+## Changelog
 
-In the "Scopes" box, check bot and applications.commands.
+**2025-07-18**
+* Reminder message now includes the name of the user who made the request.
+* Date picker shortened from 7 days to 2 days (today and tomorrow).
+* "Imperial City" moved to the top of the region list for easier access.
+* Data cleanup time adjusted from 48 to 49 hours.
+* Fixed a bug in the reminder task's time-checking logic to ensure reminders are sent reliably.
+* Fixed a bug where the bot could crash when comparing old, timezone-naive data with new, timezone-aware data.
+* Updated code to use modern, non-deprecated `datetime.now(timezone.utc)` for all current time operations.
 
-A "Bot Permissions" box will appear below. Check the following permissions:
-
-Send Messages
-
-Embed Links
-
-Read Message History
-
-Copy the generated URL at the bottom of the page, paste it into your browser, and invite the bot to your Discord server.
-
-Step 2: Get the Role ID to Ping
-You need the ID of the role you want the bot to ping for new requests.
-
-Enable Developer Mode in Discord: Go to User Settings > Advanced > and turn on "Developer Mode".
-
-Copy Role ID: In your server, go to Server Settings > Roles. Right-click the role you want to ping and click "Copy Role ID". Save this ID.
-
-Step 3: Set Up the Bot on Your Server
-Now, let's configure the files on your Ubuntu machine.
-
-Create a Directory for the Bot:
-
-mkdir ~/discord-bot
-cd ~/discord-bot
-
-Create the Python Script:
-Create a file named main.py and paste the entire Python script from the Canvas into it.
-
-nano main.py 
-# (Paste the code, then press CTRL+X, then Y, then Enter to save)
-
-Create the config.json File:
-This file will store your secret token and role ID.
-
-nano config.json
-
-Paste the following into the file, replacing the placeholder values with your actual bot token and role ID.
-
-{
-  "token": "YOUR_DISCORD_BOT_TOKEN",
-  "ping_role_id": "YOUR_DISCORD_ROLE_ID"
-}
-
-Save and exit the editor.
-
-Create a Python Virtual Environment:
-It's best practice to run Python applications in a virtual environment.
-
-python3 -m venv venv
-
-Activate the Virtual Environment:
-
-source venv/bin/activate
-
-Your command prompt should now be prefixed with (venv).
-
-Install Dependencies:
-The bot requires the discord.py library.
-
-pip install 
-
-Step 4: Run the Bot Manually (for Testing)
-You can run the bot directly from your terminal to make sure everything is working.
-
-python3 main.py
-
-If successful, you will see output like this, and the bot will appear as "online" in your Discord server:
-
-Logged in as YourBotName#1234!
-Synced X commands.
-
-You can now test the /requestbuff and other commands in Discord. Press CTRL+C to stop the bot.
-
-Step 5: Run the Bot as a Systemd Service
-To ensure the bot runs 24/7 and restarts automatically if it crashes or the server reboots, you should run it as a systemd service.
-
-Deactivate the virtual environment by typing deactivate.
-
-Create the Service File:
-
-sudo nano /etc/systemd/system/discord-bot.service
-
-Paste the following configuration into the file. You MUST replace your_user with your actual Ubuntu username.
-
-[Unit]
-Description=Discord Buff Request Bot
-After=network.target
-
-[Service]
-User=your_user
-Group=your_user
-WorkingDirectory=/home/your_user/discord-bot
-ExecStart=/home/your_user/discord-bot/venv/bin/python main.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-
-User/Group: Your Ubuntu username.
-
-WorkingDirectory: The absolute path to your bot's folder.
-
-ExecStart: The absolute path to the Python executable inside your virtual environment.
-
-Reload, Enable, and Start the Service:
-
-sudo systemctl daemon-reload
-sudo systemctl enable discord-bot.service
-sudo systemctl start discord-bot.service
-
-Check the Status:
-You can verify that the service is running correctly with:
-
-sudo systemctl status discord-bot.service
-
-If it says "active (running)", your bot is now running as a background service!
-
-Your bot is now fully deployed and will run automatically.
+**Previous Versions**
+* **Major Feature Update:** Implemented a date picker, 5-minute reminders for upcoming buffs, a scheduled task to post the buff list every 3 hours, and weekly rotating log files. Formatted the username in the buff list to be bold.
+* **Refinement:** Split the confirmation message after a request into two parts: the list embed and a separate ping message.
+* **Automation:** Added functionality to automatically post the updated buff list to the channel after a successful request.
+* **Security & UI:** Added "Imperial City" to the region list and sanitized custom name input to prevent abuse.
+* **User Experience:** Added the ability for users to provide a custom in-game name or use their Discord name.
+* **Admin Tools:** Added the `/clearbuffs` command for administrators.
+* **Simplification:** Removed the initial multi-language support in favor of a single-language (English) script to reduce complexity.
+* **Initial Version:** Created the core bot with dropdowns for buff selection, conflict detection, and a 7-day data cleanup schedule.
