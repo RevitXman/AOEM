@@ -70,7 +70,7 @@ def cleanup_old_data():
                 request_time = request_time.replace(tzinfo=timezone.utc)
             
             # Keep the request if it's NOT older than 49 hours
-            if request_time > forty_nine_hours_ago:
+            if request_time < forty_nine_hours_ago:
                 cleaned_requests[req_id] = req_data
         except (ValueError, KeyError) as e:
             # This handles malformed or missing 'request_time' entries in the JSON
@@ -111,6 +111,25 @@ async def create_buffs_embed(guild: discord.Guild):
     return embed
 
 # --- UI Components ---
+
+class ConfirmationView(View):
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.confirmed = None
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: Button):
+        self.confirmed = True
+        # Start the main buff request process
+        buff_view = BuffRequestView(interaction)
+        await interaction.response.edit_message(content="Please select the details for your buff request.", view=buff_view)
+        self.stop()
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: Button):
+        self.confirmed = False
+        await interaction.response.edit_message(content="Please apply at the IC before continuing or DIOR will come knocking", view=None)
+        self.stop()
 
 class AoEMNameModal(Modal, title='Enter Your In-Game Name'):
     parent_view: 'BuffRequestView'
@@ -250,11 +269,18 @@ class RegionSelect(Select):
 # --- Slash Commands ---
 @tree.command(name="requestbuff", description="Request a capital buff.")
 async def requestbuff(interaction: discord.Interaction):
-    view = BuffRequestView(interaction)
-    await interaction.response.send_message("Please select the details for your buff request.", view=view, ephemeral=True)
+    """Starts the buff request process with a confirmation step."""
+    view = ConfirmationView()
+    await interaction.response.send_message("Did you apply for the buff at the IC?", view=view, ephemeral=True)
 
 @tree.command(name="viewbuffs", description="View all active buff requests.")
 async def viewbuffs(interaction: discord.Interaction):
+    """Displays the list of current buff requests."""
+    # FIX: Add a check to ensure the command is used in a server.
+    if not interaction.guild:
+        await interaction.response.send_message("This command can only be used in a server channel.", ephemeral=True)
+        return
+        
     buff_list_embed = await create_buffs_embed(interaction.guild)
     if buff_list_embed:
         await interaction.response.send_message(embed=buff_list_embed)
@@ -346,7 +372,8 @@ async def schedule_task():
         except Exception as e:
             logger.error(f"Error in schedule_task: {e}", exc_info=True)
             
-        await asyncio.sleep(3 * 60 * 60) # Sleep for 3 hours
+        # Sleep for 12 hours
+        await asyncio.sleep(12 * 60 * 60)
 
 # --- Bot Events ---
 @client.event
