@@ -49,35 +49,28 @@ def save_data(data):
         json.dump(data, f, indent=4)
 
 def cleanup_old_data():
-    """Removes entries older than 49 hours, handling both naive and aware datetimes."""
+    """Removes entries older than 24 hours, handling both naive and aware datetimes."""
     requests = load_data()
     if not requests:
         return
 
-    # Use timezone-aware datetime object for comparison
-    forty_nine_hours_ago = datetime.now(timezone.utc) - timedelta(hours=49)
+    twenty_four_hours_ago = datetime.now(timezone.utc) - timedelta(hours=24)
     
-    # Create a new dictionary to hold the requests we want to keep
     cleaned_requests = {}
     
     for req_id, req_data in requests.items():
         try:
-            # Load the request time from the stored ISO string
             request_time = datetime.fromisoformat(req_data['request_time'])
             
-            # FIX: If the loaded datetime is naive (from old data), make it aware by setting its timezone to UTC
             if request_time.tzinfo is None:
                 request_time = request_time.replace(tzinfo=timezone.utc)
             
-            # Keep the request if it's NOT older than 49 hours
-            if request_time < forty_nine_hours_ago:
+            if request_time > twenty_four_hours_ago:
                 cleaned_requests[req_id] = req_data
         except (ValueError, KeyError) as e:
-            # This handles malformed or missing 'request_time' entries in the JSON
             logger.warning(f"Skipping request with ID {req_id} due to invalid time data: {e}")
             continue
 
-    # Only save if there's a change
     if len(cleaned_requests) != len(requests):
         save_data(cleaned_requests)
         logger.info(f"Cleaned up {len(requests) - len(cleaned_requests)} old buff requests.")
@@ -89,26 +82,36 @@ client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
 # --- Helper Function ---
-async def create_buffs_embed(guild: discord.Guild):
+async def create_buffs_embeds(guild: discord.Guild):
+    """Creates and returns a list of embeds for the buff list to handle pagination."""
     requests = load_data()
     if not requests:
-        return None
+        return []
 
-    embed = discord.Embed(title="Current Buff Requests", color=discord.Color.blue())
     sorted_requests = sorted(requests.values(), key=lambda x: x['time_slot'])
+    
+    embeds = []
+    current_embed = discord.Embed(title="Current Buff Requests", color=discord.Color.blue())
+    field_count = 0
 
     for req in sorted_requests:
+        if field_count >= 25:
+            embeds.append(current_embed)
+            current_embed = discord.Embed(title="Current Buff Requests (Cont.)", color=discord.Color.blue())
+            field_count = 0
+
         user = guild.get_member(req['user_id'])
         user_mention = user.mention if user else f"User ID: {req['user_id']}"
         start_time_obj = datetime.fromisoformat(req['time_slot'])
         time_range_str = f"{start_time_obj.strftime('%Y-%m-%d %H:%M')} UTC"
         
-        # Make the username bold
         field_name = f"Title: {req['title']} | Region: {req['region']}"
         field_value = f"User: **{user_mention} ({req['user_name']})**\nTime Slot: {time_range_str}"
-        embed.add_field(name=field_name, value=field_value, inline=False)
+        current_embed.add_field(name=field_name, value=field_value, inline=False)
+        field_count += 1
     
-    return embed
+    embeds.append(current_embed)
+    return embeds
 
 # --- UI Components ---
 
@@ -120,7 +123,6 @@ class ConfirmationView(View):
     @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: Button):
         self.confirmed = True
-        # Start the main buff request process
         buff_view = BuffRequestView(interaction)
         await interaction.response.edit_message(content="Please select the details for your buff request.", view=buff_view)
         self.stop()
@@ -175,7 +177,6 @@ class BuffRequestView(View):
 
         sanitized_name = discord.utils.escape_markdown(requester_name)
         requests = load_data()
-        # Use timezone-aware datetime object
         request_time_utc = datetime.now(timezone.utc)
         start_time_obj = datetime.fromisoformat(self.time_slot)
         time_range_str = f"{start_time_obj.strftime('%H:%M')} UTC"
@@ -197,15 +198,14 @@ class BuffRequestView(View):
         ping_content = ping_role.mention if ping_role else f"@role({PING_ROLE_ID})"
         await interaction.channel.send(content=ping_content, embed=embed)
 
-        updated_list_embed = await create_buffs_embed(interaction.guild)
-        if updated_list_embed:
-            await interaction.channel.send(embed=updated_list_embed)
+        buff_embeds = await create_buffs_embeds(interaction.guild)
+        for an_embed in buff_embeds:
+            await interaction.channel.send(embed=an_embed)
 
 class DateSelect(Select):
     def __init__(self):
         today = date.today()
         options = []
-        # Show today and tomorrow
         for i in range(2):
             current_date = today + timedelta(days=i)
             options.append(discord.SelectOption(label=current_date.strftime('%A, %B %d'), value=current_date.isoformat()))
@@ -233,7 +233,6 @@ class TimeSelect(Select):
         selected_date = date.fromisoformat(selected_date_str)
         options = []
         for i in range(24):
-            # Create a timezone-aware datetime object for UTC
             dt_obj = datetime.combine(selected_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=i)
             label = f"{dt_obj.strftime('%H:%M')} - {(dt_obj + timedelta(hours=1)).strftime('%H:%M')} UTC"
             options.append(discord.SelectOption(label=label, value=dt_obj.isoformat()))
@@ -254,7 +253,6 @@ class TimeSelect(Select):
 
 class RegionSelect(Select):
     def __init__(self):
-        # Moved "Imperial City" to the top of the list
         regions = ["Imperial City", "Gaul", "Olympia", "Neilos", "Tinir", "East Kingsland", "Eastland", "Kyuno", "North Kingsland", "West Kingsland", "NA"]
         options = [discord.SelectOption(label=r, value=r) for r in regions]
         super().__init__(placeholder="Step 4: Select a region...", options=options)
@@ -269,21 +267,20 @@ class RegionSelect(Select):
 # --- Slash Commands ---
 @tree.command(name="requestbuff", description="Request a capital buff.")
 async def requestbuff(interaction: discord.Interaction):
-    """Starts the buff request process with a confirmation step."""
     view = ConfirmationView()
     await interaction.response.send_message("Did you apply for the buff at the IC?", view=view, ephemeral=True)
 
 @tree.command(name="viewbuffs", description="View all active buff requests.")
 async def viewbuffs(interaction: discord.Interaction):
-    """Displays the list of current buff requests."""
-    # FIX: Add a check to ensure the command is used in a server.
     if not interaction.guild:
         await interaction.response.send_message("This command can only be used in a server channel.", ephemeral=True)
         return
         
-    buff_list_embed = await create_buffs_embed(interaction.guild)
-    if buff_list_embed:
-        await interaction.response.send_message(embed=buff_list_embed)
+    buff_embeds = await create_buffs_embeds(interaction.guild)
+    if buff_embeds:
+        await interaction.response.send_message(embed=buff_embeds[0])
+        for embed in buff_embeds[1:]:
+            await interaction.followup.send(embed=embed)
     else:
         await interaction.response.send_message("There are no active buff requests.", ephemeral=True)
 
@@ -312,23 +309,16 @@ async def reminder_task():
             requests = load_data()
             now_utc = datetime.now(timezone.utc)
             
-            if not requests:
-                logger.debug("Reminder check: No active requests found.")
-
             for req_id, req in requests.items():
-                logger.debug(f"Checking request ID: {req_id}")
                 if req_id in sent_reminders:
-                    logger.debug(f"Skipping request {req_id}, reminder already sent.")
                     continue
 
                 start_time = datetime.fromisoformat(req['time_slot'])
                 time_diff = start_time - now_utc
-                logger.debug(f"Request {req_id} starts at {start_time}. Time difference: {time_diff}")
                 
-                # Check if the time difference is between 4 and 5 minutes.
                 if timedelta(minutes=4) < time_diff <= timedelta(minutes=5):
                     logger.info(f"Time condition met for request {req_id}. Preparing to send reminder.")
-                    guild = client.guilds[0] # Assumes the bot is in one server
+                    guild = client.guilds[0]
                     if not guild:
                         logger.warning("Reminder task could not find a guild.")
                         continue
@@ -339,40 +329,36 @@ async def reminder_task():
                     user_mention = user.mention if user else req['user_name']
 
                     if channel and role:
-                        # Include the user who made the request in the reminder
                         reminder_msg = f"{role.mention} Reminder: The **{req['title']}** buff in **{req['region']}** requested by **{user_mention}** starts in 5 minutes!"
                         await channel.send(reminder_msg)
                         sent_reminders.add(req_id)
                         logger.info(f"Successfully sent 5-minute reminder for request {req_id}")
                     else:
-                        if not channel:
-                            logger.warning(f"Could not send reminder for {req_id}: Channel with ID {LOG_CHANNEL_ID} not found.")
-                        if not role:
-                            logger.warning(f"Could not send reminder for {req_id}: Role with ID {PING_ROLE_ID} not found.")
-                else:
-                    logger.debug(f"Time condition not met for request {req_id}. Skipping.")
-
+                        if not channel: logger.warning(f"Could not send reminder for {req_id}: Channel with ID {LOG_CHANNEL_ID} not found.")
+                        if not role: logger.warning(f"Could not send reminder for {req_id}: Role with ID {PING_ROLE_ID} not found.")
+                
         except Exception as e:
             logger.error(f"An unexpected error occurred in reminder_task: {e}", exc_info=True)
             
-        await asyncio.sleep(60) # Check every minute
+        await asyncio.sleep(60)
 
 async def schedule_task():
     await client.wait_until_ready()
     while not client.is_closed():
         try:
-            cleanup_old_data() # Also clean up data on this schedule
+            cleanup_old_data()
             guild = client.guilds[0]
             channel = guild.get_channel(LOG_CHANNEL_ID)
             if channel:
-                embed = await create_buffs_embed(guild)
-                if embed:
-                    await channel.send("--- Scheduled Buff List Update ---", embed=embed)
+                embeds = await create_buffs_embeds(guild)
+                if embeds:
+                    await channel.send("--- Scheduled Buff List Update ---")
+                    for embed in embeds:
+                        await channel.send(embed=embed)
                     logger.info("Posted scheduled buff list.")
         except Exception as e:
             logger.error(f"Error in schedule_task: {e}", exc_info=True)
             
-        # Sleep for 12 hours
         await asyncio.sleep(12 * 60 * 60)
 
 # --- Bot Events ---
@@ -382,7 +368,6 @@ async def on_ready():
     logger.info(f'Logged in as {client.user}!')
     print(f'Logged in as {client.user}!')
     
-    # Start background tasks
     client.loop.create_task(reminder_task())
     client.loop.create_task(schedule_task())
 
