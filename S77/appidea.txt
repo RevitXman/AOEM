@@ -1,0 +1,74 @@
+Keeping with the discord intergration idea I want to redo this web application for "Server 77"
+
+1. The login page needs to have the ability to register an account with the following:
+User name and password with the password requirements being 10 characters with upper/lower case and special characters or allow the option to use google authentication
+The first user to register is considered the main administrator
+Once the user creates a username and password or login in with Google they will be presented with a challenge code, this code will be good for 7 days and will need to be sent to the admin of the application in order to have an active account. The text for the message is "Please reach out to RazeZ or any R4" Once the user is logged in for the first time, they will need to create a user profile.
+The profile will have the following fields:
+1. Age of Empires Name. (required)
+2. Alliance: Give a drop down with the following: TnP, T2P, BeD
+3. Language: with a drop down of every known Language in alphabit order (Language Translation coming soon)
+4. Governor Account Id (Found under your Governor Info Page in Game) (optional. For Apex coin giveways)
+5. Link to the servers discord
+
+For the Super admin:
+Have an Admin Control Panel that will list out:
+1. All the user details and how they registered
+2. Allow the admin to reset passwords if they did not use Google authentication
+3. Change the users Alliance
+4. Create global server events in the events page
+5. See and manage all the Capital Buffs and request a buff
+6. The ability to see the challenge code from the user who is registered or pre-registered and allow the user access to the application
+7. The admin should see a notification if there is a pending user who is waiting to be authorized
+8. The ability to add alliance names into the login page drop down
+9. The ability to search for a user based on: Age of Empires name and Governor account id
+
+The admin should also be able to assign a "R4" role which has:
+1. The ability to create and see events and polls for that group (alliance)
+2. Submit their requests for a capital buff
+3. Events are: Trojan Event with a date and time. World Boss with a date and time. Treasure Hunts with a date and time. Wonder and Dawn Events with a date and time, but add the "Legions group"
+4. Add users into a secondary group called "Legions" with still follows the allaince group permissions
+5. Legions should have a tag with the following: SAT01, SAT19, SAT11, SUN19, SUN01 tag. The R4 can assign the tag to that user in the Legion
+
+The next role is a "Core" role
+1. This user can only read events
+2. participate in polls
+3. request capital buffs
+4. See their Legion Tag with the tag
+5. Download all event details in a ical or import into a Calendar application on their mobile device.
+6. R4 and Aadmin should also be able to see the above as well.
+
+The last role is called "Title Teller"
+1. This role can see and edit all capital buffs
+2. Allow the user to download the capital buffs into a ical or import into their Andriod or Iphone Calendar
+
+When the user successful authenticated they will be dropped into that Alliance's "Home Page" with a Tab for "Capital Buffs"
+On the home page they will see: Events, Polls and Capital Buffs
+1. The user will see an Event Widgets which will have the events for their Alliance.
+2. See any open polls
+
+
+On the Capital Buffs Tab
+1. The user (Super Admin, R4, Title Teller and Core role) can request and view all capital buffs
+2. The user (Age of Empire's Name) will select a date (2 days from the current time)
+
+3. user will be asked to select the following Title the following from a drop down list: Research, Training, Building, Combat or PvP buff
+
+4. Once the above is selected, they must then select a time range 1hr in UTC time frame (use UTC 0100 to 0200 as an example)
+
+5. After the time is select, they must then select a region from the list: Imperial City, Gaul, Olympia, Neilos, Tinir, East Kingsland, Eastland, Kyuno, North Kingsland, West Kingsland, or NA
+
+6. If the time, date and Title is already taken tell the user to select another time and date.
+
+7. Allow the user who requested the Buff to edit the time, date and title, granted if its not taken
+
+8. Once the time and date has past on the buff remove it from the list of Buffs
+
+9. Add the ability to integrate it into the Discord bot where the Discord Role Title Teller can see all buffs from discord and be notified 10 min when a buff is coming up.
+
+10. Add in a WhatsApp intergration that will ping a WhatsApp Community every 12hrs with the list of Buffs and ping 10 min before an up and coming buff.. Put in the code, but do not enable it until I figure out the WhatsApp intergration.
+
+11. If possible if the user requests it via the Discord bot, have it send the request to the Capital Buff in the web application
+
+
+The optional end goal is to turn this into a iOS and Google App
