@@ -1,0 +1,219 @@
+from fastapi import FastAPI, Request, Depends, Form, Response, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from datetime import datetime, timezone, timedelta
+import logging, os
+
+from .settings import settings
+from .db import Base, engine, get_db
+from .models import User, Role, AuditLog, Buff
+from .auth import hash_password, verify_password, get_current_user, AUTH_COOKIE, ser
+from .i18n import load_lang, pick_lang, SUPPORTED
+from .services import audit, ical
+from .services.buffs import VALID_TITLES, VALID_REGIONS, create_buff, normalized_hour, check_conflict
+from .services.discord_sync import list_upcoming_two_days
+
+# logging
+try:
+    logging.basicConfig(filename=settings.LOG_FILE, level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+except PermissionError:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.getLogger().warning("LOG_FILE not writable, using stdout")
+
+app = FastAPI(title=settings.APP_NAME)
+app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+
+# DB init
+Base.metadata.create_all(bind=engine)
+
+def ip_of(request: Request) -> str | None:
+    return request.headers.get("x-forwarded-for") or request.client.host
+
+def set_lang_cookie(resp: Response, lang: str):
+    resp.set_cookie("lang", lang, httponly=False, samesite="Lax", max_age=3600*24*365)
+
+@app.middleware("http")
+async def utc_mw(request: Request, call_next):
+    request.state.now_utc = datetime.now(timezone.utc)
+    return await call_next(request)
+
+@app.get("/", response_class=HTMLResponse)
+def home(request: Request, db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    lang = load_lang(pick_lang(request))
+    return templates.TemplateResponse("home.html", {
+        "request": request, "t": lang, "user": user, "is_admin": user.role==Role.admin,
+        "titles": VALID_TITLES, "regions": VALID_REGIONS
+    })
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    lang = load_lang(pick_lang(request))
+    return templates.TemplateResponse("login.html", {"request": request, "t": lang})
+
+@app.post("/login")
+def login(request: Request, aoe_name: str = Form(...), password: str = Form(...), lang: str = Form("en"), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.aoe_name == aoe_name.strip()).first()
+    if not user or not verify_password(password, user.password_hash):
+        resp = RedirectResponse("/login?e=1", status_code=303); set_lang_cookie(resp, lang); return resp
+    if not user.is_approved and user.role != Role.admin:
+        resp = RedirectResponse("/login?pending=1", status_code=303); set_lang_cookie(resp, lang); return resp
+    token = ser.dumps({"aoe_name": user.aoe_name})
+    resp = RedirectResponse("/", status_code=302)
+    resp.set_cookie(AUTH_COOKIE, token, httponly=True, samesite="Lax", max_age=3600*24*14)
+    set_lang_cookie(resp, lang)
+    audit.log(db, "login", ip_of(request), actor=user.aoe_name)
+    return resp
+
+@app.get("/logout")
+def logout():
+    resp = RedirectResponse("/login", status_code=302)
+    resp.delete_cookie(AUTH_COOKIE)
+    return resp
+
+@app.get("/register", response_class=HTMLResponse)
+def register_page(request: Request):
+    lang = load_lang(pick_lang(request))
+    return templates.TemplateResponse("register.html", {"request": request, "t": lang})
+
+@app.post("/register")
+def register(request: Request,
+             aoe_name: str = Form(...),
+             password: str = Form(...),
+             alliance: str = Form(""),
+             lang: str = Form("en"),
+             db: Session = Depends(get_db)):
+    aoe_name = aoe_name.strip()
+    if not aoe_name or not password:
+        return RedirectResponse("/register?e=1", status_code=303)
+    exists = db.query(User).filter(User.aoe_name == aoe_name).first()
+    if exists:
+        return RedirectResponse("/register?taken=1", status_code=303)
+    any_user = db.query(User).count() > 0
+    role = Role.user if any_user else Role.admin
+    is_approved = True if role == Role.admin else False
+    user = User(aoe_name=aoe_name, alliance=alliance.strip(), role=role, is_approved=is_approved, password_hash=hash_password(password))
+    db.add(user); db.commit()
+    audit.log(db, "register", ip_of(request), actor=aoe_name, details=f"role={role} approved={is_approved}")
+    resp = RedirectResponse("/login?registered=1", status_code=303)
+    set_lang_cookie(resp, lang)
+    return resp
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_panel(request: Request, db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    if not user or user.role != Role.admin:
+        return RedirectResponse("/", status_code=302)
+    lang = load_lang(pick_lang(request))
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    pending = [u for u in users if not u.is_approved and u.role != Role.admin]
+    logs = db.query(AuditLog).order_by(AuditLog.ts.desc()).limit(200).all()
+    return templates.TemplateResponse("admin.html", {"request": request, "t": lang, "user": user, "pending": pending, "users": users, "logs": logs})
+
+@app.post("/admin/approve")
+def admin_approve(request: Request, id: int = Form(...), db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    if not user or user.role != Role.admin: raise HTTPException(status_code=403)
+    target = db.query(User).filter(User.id == id).first()
+    if target and not target.is_approved:
+        target.is_approved = True; db.commit()
+        audit.log(db, "approve_user", ip_of(request), actor=user.aoe_name, details=target.aoe_name)
+    return RedirectResponse("/admin", status_code=303)
+
+@app.post("/admin/disable")
+def admin_disable(request: Request, id: int = Form(...), db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    if not user or user.role != Role.admin: raise HTTPException(status_code=403)
+    target = db.query(User).filter(User.id == id).first()
+    if target:
+        target.is_approved = False; db.commit()
+        audit.log(db, "disable_user", ip_of(request), actor=user.aoe_name, details=target.aoe_name)
+    return RedirectResponse("/admin", status_code=303)
+
+@app.get("/ical/two-days.ics")
+def ical_feed(db: Session = Depends(get_db)):
+    now = datetime.now(timezone.utc); end = now + timedelta(days=2)
+    buffs = db.query(Buff).filter(Buff.start_utc >= now, Buff.start_utc < end).order_by(Buff.start_utc.asc()).all()
+    events = [{"title": b.title, "region": b.region, "aoe_name": b.aoe_name, "start_utc": b.start_utc} for b in buffs]
+    body = ical.generate_ics(events)
+    return StreamingResponse(iter([body]), media_type="text/calendar")
+
+# ---------- Buff APIs ----------
+@app.get("/api/conflict")
+def api_conflict(title: str, start_iso: str, db: Session = Depends(get_db)):
+    try:
+        when = datetime.fromisoformat(start_iso)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        when = normalized_hour(when)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad start_iso")
+    return {"conflict": check_conflict(db, title, when)}
+
+@app.get("/api/list-two-days")
+def api_list_two_days(request: Request, db: Session = Depends(get_db)):
+    now = datetime.now(timezone.utc); end = now + timedelta(days=2)
+    db_items = db.query(Buff).filter(Buff.start_utc >= now, Buff.start_utc < end).order_by(Buff.start_utc.asc()).all()
+    db_json = [{"id": f"db:{b.id}", "aoe_name": b.aoe_name, "title": b.title, "region": b.region, "start_iso": b.start_utc.isoformat(), "source": b.source} for b in db_items]
+    disc = list_upcoming_two_days(now)
+    disc_json = [{"id": d["id"], "aoe_name": d["aoe_name"], "title": d["title"], "region": d["region"], "start_iso": d["start_utc"].isoformat(), "source": "discord"} for d in disc]
+    seen = set((x["title"], x["start_iso"]) for x in db_json)
+    merged = db_json + [d for d in disc_json if (d["title"], d["start_iso"]) not in seen]
+    merged.sort(key=lambda x: x["start_iso"])
+    return {"items": merged}
+
+@app.post("/buffs/create")
+def buffs_create(request: Request, title: str = Form(...), region: str = Form(...), date: str = Form(...), hour_utc: str = Form(...),
+                 db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    if not user: raise HTTPException(status_code=401)
+    if title not in VALID_TITLES or region not in VALID_REGIONS: raise HTTPException(status_code=400, detail="bad fields")
+    try:
+        y,m,d = [int(x) for x in date.split("-")]; h = int(hour_utc)
+        start = datetime(y,m,d,h,0,0,tzinfo=timezone.utc)
+    except Exception:
+        raise HTTPException(status_code=400, detail="bad date/hour")
+    try:
+        create_buff(db, user.aoe_name, title, region, start, source="web")
+        audit.log(db, "buff_create", ip_of(request), actor=user.aoe_name, details=f"{title} {region} {start}")
+    except ValueError:
+        return RedirectResponse("/?conflict=1", status_code=303)
+    return RedirectResponse("/", status_code=303)
+
+@app.get("/buffs/edit/{buff_id}", response_class=HTMLResponse)
+def buff_edit_page(buff_id: int, request: Request, db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    if not user: return RedirectResponse("/login", status_code=302)
+    b = db.query(Buff).filter(Buff.id==buff_id).first()
+    if not b: return RedirectResponse("/", status_code=302)
+    if b.aoe_name != user.aoe_name: return RedirectResponse("/", status_code=302)
+    if b.start_utc <= datetime.now(timezone.utc): return RedirectResponse("/", status_code=302)
+    lang = load_lang(pick_lang(request))
+    return templates.TemplateResponse("edit_buff.html", {"request": request, "t": lang, "user": user, "is_admin": user.role==Role.admin, "buff": b, "titles": VALID_TITLES, "regions": VALID_REGIONS})
+
+@app.post("/buffs/update/{buff_id}")
+def buff_update(buff_id: int, request: Request, title: str = Form(...), region: str = Form(...), date: str = Form(...), hour_utc: str = Form(...),
+                db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    if not user: raise HTTPException(status_code=401)
+    b = db.query(Buff).filter(Buff.id==buff_id).first()
+    if not b: raise HTTPException(status_code=404)
+    if b.aoe_name != user.aoe_name: raise HTTPException(status_code=403)
+    if b.start_utc <= datetime.now(timezone.utc): raise HTTPException(status_code=400, detail="past buff")
+    if title not in VALID_TITLES or region not in VALID_REGIONS: raise HTTPException(status_code=400)
+    try:
+        y,m,d = [int(x) for x in date.split("-")]; h = int(hour_utc)
+        new_start = datetime(y,m,d,h,0,0,tzinfo=timezone.utc); new_start = normalized_hour(new_start)
+    except Exception:
+        raise HTTPException(status_code=400)
+    if (b.title != title or b.start_utc != new_start) and check_conflict(db, title, new_start):
+        return RedirectResponse(f"/buffs/edit/{buff_id}?conflict=1", status_code=303)
+    b.title, b.region, b.start_utc = title, region, new_start
+    db.commit()
+    audit.log(db, "buff_edit", ip_of(request), actor=user.aoe_name, details=f"id={buff_id}")
+    return RedirectResponse("/", status_code=303)
+
+def run():
+    import uvicorn
+    uvicorn.run("s77.main:app", host=settings.BIND_HOST, port=settings.BIND_PORT, reload=False)
+
+if __name__ == "__main__":
+    run()

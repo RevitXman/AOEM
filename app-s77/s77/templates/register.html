@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="title">{{ t["welcome.server77"] }}</h1>
+<form method="post" action="/register" class="card">
+  <label>{{ t["reg.aoe_name"] }}</label>
+  <input name="aoe_name" required placeholder="{{ t['ph.aoe_name'] }}" />
+  <label>{{ t["reg.password"] }}</label>
+  <input type="password" name="password" required placeholder="Do not reuse passwords" />
+  <label>{{ t["reg.alliance"] }}</label>
+  <input name="alliance" placeholder="{{ t['ph.alliance'] }}" />
+  <label>{{ t["login.language"] }}</label>
+  <select name="lang">
+    {% for code in ["en","tr","ko","pt","zh-Hans","ja","es","de","fr","hi"] %}
+      <option value="{{code}}" {% if request.cookies.get('lang','en')==code %}selected{% endif %}>{{ code }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">{{ t["btn.register"] }}</button>
+  <p class="muted">{{ t["reg.first_is_admin"] }}</p>
+</form>
+<div class="info-banner">{{ t["register.approval_note"] }}</div>
+<p class="muted"><a href="/login">{{ t["nav.login"] }}</a></p>
+{% endblock %}

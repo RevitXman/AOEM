@@ -1,0 +1,31 @@
+[Unit]
+Description=S77 Discord Requests Web (uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=s77
+Group=s77
+WorkingDirectory=/opt/s77/app
+# Adjust the venv path if yours differs:
+ExecStart=/opt/s77/venv/bin/uvicorn s77.main:app --host 192.168.15.71 --port 8000
+Environment=PYTHONUNBUFFERED=1
+# Optional: set DB URL here if not in settings; uncomment & edit:
+# Environment=DATABASE_URL=postgresql+psycopg2://user:pass@127.0.0.1:5432/s77
+
+# Restart behavior
+Restart=on-failure
+RestartSec=3s
+
+# Hardening (optional)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+# Logging (journald)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

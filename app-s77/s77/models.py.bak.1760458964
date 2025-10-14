@@ -1,0 +1,43 @@
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Enum, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+from .db import Base
+import enum
+
+def utcnow():
+    return datetime.now(timezone.utc)
+
+class Role(str, enum.Enum):
+    admin = "admin"
+    user = "user"
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    aoe_name = Column(String(80), unique=True, nullable=False, index=True)
+    alliance = Column(String(120), nullable=True)
+    password_hash = Column(String(300), nullable=False)
+    role = Column(Enum(Role), default=Role.user, nullable=False)
+    is_approved = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id = Column(Integer, primary_key=True)
+    ts = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    actor = Column(String(80), nullable=True)     # aoe_name if available
+    ip = Column(String(64), nullable=True)
+    action = Column(String(200), nullable=False)
+    details = Column(String(1000), nullable=True)
+
+class Buff(Base):
+    __tablename__ = "buffs"
+    id = Column(Integer, primary_key=True)
+    aoe_name = Column(String(80), nullable=False, index=True)
+    title = Column(String(32), nullable=False)      # Research, Training, Building, Combat, PvP
+    region = Column(String(40), nullable=False)     # Imperial City, ...
+    start_utc = Column(DateTime(timezone=True), nullable=False)  # hour start
+    source = Column(String(16), nullable=False, default="web")   # "discord" or "web"
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("title", "start_utc", name="uniq_title_time"), )

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="title">{{ t["welcome.capital.home"] }}</h1>
+<form method="post" action="/login" class="card">
+  <label>{{ t["login.aoe_name"] }}</label>
+  <input name="aoe_name" required placeholder="Age of Empire Name" />
+  <label>{{ t["login.password"] }}</label>
+  <input type="password" name="password" required />
+  <label>{{ t["login.language"] }}</label>
+  <select name="lang">
+    {% for code in ["en","tr","ko","pt","zh-Hans","ja","es","de","fr","hi"] %}
+      <option value="{{code}}" {% if request.cookies.get('lang','en')==code %}selected{% endif %}>{{ code }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">{{ t["btn.login"] }}</button>
+</form>
+<p class="muted"><a href="/register">{{ t["login.no_account"] }}</a></p>
+{% endblock %}

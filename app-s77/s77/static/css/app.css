@@ -1,0 +1,25 @@
+:root { --gold:#d4af37; --bg:#000; --muted:#a58e46; }
+*{box-sizing:border-box;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;}
+body.bg-black{background:#000;color:var(--gold);}
+.text-gold{color:var(--gold);}
+.topnav{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#111;border-bottom:1px solid var(--muted);}
+.topnav a{color:var(--gold);text-decoration:none;margin-right:12px;opacity:.9}
+.topnav a:hover{opacity:1}
+.langpick{background:#111;color:var(--gold);border:1px solid var(--muted);padding:4px 8px;border-radius:6px}
+.wrap{max-width:980px;margin:32px auto;padding:0 16px}
+.title{font-size:28px;margin:0 0 16px 0}
+.card{background:#0b0b0b;border:1px solid #333;border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+input,select,button{background:#111;color:var(--gold);border:1px solid #333;border-radius:10px;padding:10px}
+button{cursor:pointer}
+button:hover{border-color:var(--gold)}
+.muted{color:var(--muted);font-size:12px}
+.footer{padding:24px;text-align:center;color:#777;border-top:1px solid #222;margin-top:42px}
+.grid{display:grid;gap:16px;grid-template-columns:1fr 1fr}
+.widget{background:#0b0b0b;border:1px solid #222;border-radius:14px;padding:16px}
+.tbl{width:100%;border-collapse:collapse}
+.tbl th,.tbl td{border:1px solid #222;padding:8px}
+.brand{font-weight:800;color:var(--gold)}
+
+/* S77: Discord icon size */
+.discord-link { display:inline-flex; align-items:center; gap:8px; margin-top:8px; }
+.discord-link svg { width:16px; height:16px; }
