@@ -1,0 +1,101 @@
+
+/* ---- S77: ensure text is visible on dark theme ---- */
+.tbl th, table th { 
+  color: #d4af37 !important;   /* gold headers */
+}
+button, .btn, input[type="submit"] {
+  color: #d4af37 !important;   /* gold button text */
+  border-color: #d4af37 !important;
+}
+button:hover, .btn:hover, input[type="submit"]:hover {
+  filter: brightness(1.15);
+}
+a { color: #d4af37; }
+
+/* --- S77 custom buttons --- */
+.btn-gold {
+  background: #d4af37 !important;   /* gold */
+  color: #000 !important;            /* black text */
+  border: 1px solid #d4af37 !important;
+  padding: 6px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.btn-gold:hover { filter: brightness(1.05); }
+.btn-inline { display:inline-block; margin-right:8px; }
+
+/* Stack action buttons vertically with spacing */
+.actions-cell { min-width: 150px; }
+.actions-cell form,
+.actions-cell a { 
+  display: block;
+  margin: 4px 0;
+}
+
+/* Actions cell: horizontal layout with spacing; wraps if tight */
+.actions-cell { min-width: 160px; }
+.actions-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.actions-row form,
+.actions-row a {
+  display: inline-block;
+  margin: 0; /* prevent stacking/overlap */
+}
+
+/* --- FIX: make Delete/Edit sit side-by-side in the Actions column --- */
+.actions-cell { 
+  min-width: 180px;
+  white-space: nowrap;            /* keeps them on one line when possible */
+}
+.actions-row {
+  display: flex !important;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;                /* will wrap if column gets too narrow */
+}
+.actions-cell .actions-row form,
+.actions-cell .actions-row a {
+  display: inline-flex !important;  /* beat any global "form { display:block }" */
+  margin: 0 !important;
+  width: auto !important;
+}
+.actions-cell .actions-row form button,
+.actions-cell .actions-row a.btn-gold {
+  line-height: 1.2;
+  padding: 6px 12px;
+}
+
+/* === FINAL override for Actions column === */
+.tbl td.actions-cell { min-width: 180px; white-space: normal; }
+.tbl td.actions-cell .actions-row{
+  display:flex !important;
+  gap:8px !important;
+  align-items:center !important;
+  flex-wrap:wrap !important;   /* will wrap if column gets too narrow */
+}
+.tbl td.actions-cell .actions-row form,
+.tbl td.actions-cell .actions-row a{
+  display:inline-flex !important;
+  margin:0 !important;
+  width:auto !important;
+}
+
+/* Info banner */
+.info-banner {
+  border: 1px solid #d4af37;
+  color: #d4af37;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-top: 12px;
+}
+.discord-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.discord-link svg { width: 16px; height: 16px; }

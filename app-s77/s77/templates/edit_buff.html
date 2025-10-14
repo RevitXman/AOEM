@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="title">{{ t["widget.request_buff"] }} — Edit</h2>
+<form method="post" action="/buffs/update/{{ buff.id }}" class="card">
+  <label>Title</label>
+  <select name="title">
+    {% for x in titles %}
+      <option value="{{x}}" {% if x==buff.title %}selected{% endif %}>{{x}}</option>
+    {% endfor %}
+  </select>
+  <label>Region</label>
+  <select name="region">
+    {% for r in regions %}
+      <option value="{{r}}" {% if r==buff.region %}selected{% endif %}>{{r}}</option>
+    {% endfor %}
+  </select>
+  <label>Date (UTC)</label>
+  <input type="date" name="date" value="{{ buff.start_utc.strftime('%Y-%m-%d') }}" required />
+  <label>Hour (UTC)</label>
+  <select name="hour_utc">
+    {% for h in range(0,24) %}
+      {% set hh = "%02d"|format(h) %}
+      <option value="{{hh}}" {% if h==buff.start_utc.hour %}selected{% endif %}>{{hh}}:00 - {{hh}}:59</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Save</button>
+  {% if request.query_params.get('conflict') %}
+  <p class="muted">That slot is taken. Please choose another.</p>
+  {% endif %}
+</form>
+{% endblock %}

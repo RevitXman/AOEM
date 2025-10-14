@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="title">{{ t["welcome.capital.home"] }}</h2>
+<div class="grid">
+  <div class="widget">
+    <h3>{{ t["widget.request_buff"] }}</h3>
+    <p class="muted">{{ t["widget.request_buff.note"] }}</p>
+    <form method="post" action="/buffs/create" id="buffForm" class="card">
+      <label>Title</label>
+      <select name="title" id="titleSel" required>
+        {% for x in titles %}
+          <option value="{{x}}">{{x}}</option>
+        {% endfor %}
+      </select>
+      <label>Region</label>
+      <select name="region" required>
+        {% for r in regions %}
+          <option value="{{r}}">{{r}}</option>
+        {% endfor %}
+      </select>
+      <label>Date (UTC)</label>
+      <input type="date" name="date" id="dateSel" required />
+      <label>Hour (UTC)</label>
+      <select name="hour_utc" id="hourSel" required>
+        {% for h in range(0,24) %}
+          {% set hh = "%02d"|format(h) %}
+          <option value="{{hh}}">{{hh}}:00 - {{hh}}:59</option>
+        {% endfor %}
+      </select>
+      <div id="conflictMsg" class="muted" style="display:none;">That slot is taken. Please choose another.</div>
+      <button type="submit" id="submitBtn">Submit</button>
+    </form>
+  </div>
+
+  <div class="widget">
+    <h3>{{ t["widget.view_buffs"] }}</h3>
+    <p class="muted">{{ t["widget.view_buffs.note"] }} — <a href="/ical/two-days.ics">Download ICS</a></p>
+    <div id="buffList" class="card"></div>
+  </div>
+</div>
+<script>
+function pad(n){ return n<10 ? "0"+n : ""+n; }
+async function checkConflict(){
+  const title = document.getElementById('titleSel').value;
+  const date = document.getElementById('dateSel').value;
+  const hour = document.getElementById('hourSel').value;
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('conflictMsg');
+  if(!title || !date || !hour){ msg.style.display='none'; btn.disabled=false; return; }
+  const iso = date + "T" + hour + ":00:00+00:00";
+  const res = await fetch(`/api/conflict?title=${encodeURIComponent(title)}&start_iso=${encodeURIComponent(iso)}`);
+  const j = await res.json();
+  if(j.conflict){ msg.style.display='block'; btn.disabled=true; } else { msg.style.display='none'; btn.disabled=false; }
+}
+['titleSel','dateSel','hourSel'].forEach(id=>document.getElementById(id).addEventListener('change', checkConflict));
+
+async function renderList(){
+  const box = document.getElementById('buffList');
+  box.innerHTML = "Loading…";
+  const r = await fetch('/api/list-two-days');
+  const j = await r.json();
+  if(!j.items.length){ box.innerHTML = "<p class='muted'>No upcoming buffs in the next 48 hours.</p>"; return; }
+  let html = "<table class='tbl'><tr><th>UTC Start</th><th>Title</th><th>Region</th><th>User</th><th>Source</th><th>Actions</th></tr>";
+  j.items.forEach(it=>{
+    const dt = new Date(it.start_iso);
+    const stamp = dt.getUTCFullYear()+"-"+pad(dt.getUTCMonth()+1)+"-"+pad(dt.getUTCDate())+" "+pad(dt.getUTCHours())+":00 UTC";
+    const srcIcon = it.source==='discord' ? "💬" : "🕹️";
+    let actions = "";
+    if(it.id.startsWith("db:")){
+      const dbid = it.id.split(":")[1];
+      actions = `<a href="/buffs/edit/${dbid}">Edit</a>`;
+    }
+    html += `<tr><td>${stamp}</td><td>${it.title}</td><td>${it.region}</td><td>${it.aoe_name}</td><td style="text-align:center">${srcIcon}</td><td>${actions}</td></tr>`;
+  });
+  html += "</table>";
+  box.innerHTML = html;
+}
+renderList();
+setInterval(renderList, 60000);
+</script>
+{% endblock %}

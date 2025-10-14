@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ t["admin.title"] }}</h2>
+<h3>{{ t["admin.pending"] }}</h3>
+<table class="tbl">
+  <tr><th>ID</th><th>{{ t["reg.aoe_name"] }}</th><th>{{ t["reg.alliance"] }}</th><th>Role</th><th>Approved</th><th>{{ t["admin.actions"] }}</th></tr>
+  {% for u in pending %}
+  <tr>
+    <td>{{u.id}}</td><td>{{u.aoe_name}}</td><td>{{u.alliance or "-"}}</td>
+    <td>{{u.role.value}}</td><td>{{"yes" if u.is_approved else "no"}}</td>
+    <td>
+      <form method="post" action="/admin/approve" style="display:inline"><input type="hidden" name="id" value="{{u.id}}"/><button>{{ t["admin.approve"] }}</button></form>
+      <form method="post" action="/admin/disable" style="display:inline"><input type="hidden" name="id" value="{{u.id}}"/><button>{{ t["admin.disable"] }}</button></form>
+      {% if u.role.value == "admin" %}
+      <form method="post" action="/admin/role" style="display:inline">
+        <input type="hidden" name="id" value="{{u.id}}"/><input type="hidden" name="role" value="user"/><button>{{ t["admin.make_user"] }}</button>
+      </form>
+      {% else %}
+      <form method="post" action="/admin/role" style="display:inline">
+        <input type="hidden" name="id" value="{{u.id}}"/><input type="hidden" name="role" value="admin"/><button>{{ t["admin.make_admin"] }}</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h3>{{ t["admin.all_users"] }}</h3>
+<table class="tbl">
+  <tr><th>ID</th><th>{{ t["reg.aoe_name"] }}</th><th>{{ t["reg.alliance"] }}</th><th>Role</th><th>Approved</th><th>{{ t["admin.actions"] }}</th></tr>
+  {% for u in users %}
+  <tr>
+    <td>{{u.id}}</td><td>{{u.aoe_name}}</td><td>{{u.alliance or "-"}}</td><td>{{u.role.value}}</td><td>{{"yes" if u.is_approved else "no"}}</td>
+    <td>
+      {% if u.role.value == "admin" %}
+      <form method="post" action="/admin/role" style="display:inline">
+        <input type="hidden" name="id" value="{{u.id}}"/><input type="hidden" name="role" value="user"/><button>{{ t["admin.make_user"] }}</button>
+      </form>
+      {% else %}
+      <form method="post" action="/admin/role" style="display:inline">
+        <input type="hidden" name="id" value="{{u.id}}"/><input type="hidden" name="role" value="admin"/><button>{{ t["admin.make_admin"] }}</button>
+      </form>
+      {% endif %}
+      {% if not u.is_approved and u.role.value != "admin" %}
+      <form method="post" action="/admin/approve" style="display:inline"><input type="hidden" name="id" value="{{u.id}}"/><button>{{ t["admin.approve"] }}</button></form>
+      {% endif %}
+      {% if u.role.value != "admin" %}
+      <form method="post" action="/admin/disable" style="display:inline"><input type="hidden" name="id" value="{{u.id}}"/><button>{{ t["admin.disable"] }}</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h3>{{ t["admin.audit"] }}</h3>
+<table class="tbl">
+  <tr><th>Time (UTC)</th><th>Actor</th><th>IP</th><th>Action</th><th>Details</th></tr>
+  {% for a in logs %}
+  <tr><td>{{a.ts}}</td><td>{{a.actor or "-"}}</td><td>{{a.ip or "-"}}</td><td>{{a.action}}</td><td>{{a.details or "-"}}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

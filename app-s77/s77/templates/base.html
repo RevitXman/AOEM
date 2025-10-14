@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{{ t["app.title"] }}</title>
+  <link rel="stylesheet" href="/static/css/app.css?v=3"/>
+  <script src="/static/js/lang.js" defer></script>
+</head>
+<body class="bg-black text-gold">
+  <header class="topnav">
+    <div class="brand">Server 77</div>
+    <nav>
+      {% if user %}
+        <a href="/">Home</a>
+        {% if is_admin %}
+          <a href="/admin">{{ t["nav.admin"] }}</a>
+        {% endif %}
+        <a href="/logout">{{ t["nav.logout"] }}</a>
+      {% else %}
+        <a href="/login">{{ t["nav.login"] }}</a>
+        <a href="/register">{{ t["nav.register"] }}</a>
+      {% endif %}
+      <select id="lang" name="lang" class="langpick" onchange="switchLang(event)">
+        {% for code in ["en","tr","ko","pt","zh-Hans","ja","es","de","fr","hi","id","it"] %}
+          <option value="{{code}}" {% if request.cookies.get('lang','en')==code %}selected{% endif %}>{{ code }}</option>
+        {% endfor %}
+      </select>
+    </nav>
+  </header>
+  <main class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">&copy; Server 77</footer>
+</body>
+</html>

@@ -1,0 +1,24 @@
+[Unit]
+Description=S77 Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jdavies
+Group=jdavies
+# IMPORTANT: run in /opt/s77/shared so DATA_FILE="buff_requests.json" resolves here
+WorkingDirectory=/opt/s77/discord_bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/s77/venv/bin/python /opt/s77/discord_bot/main.py
+Restart=on-failure
+RestartSec=5
+
+# Hardening (optional)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
